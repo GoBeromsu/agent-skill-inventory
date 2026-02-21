@@ -1148,6 +1148,7 @@ fn collect_candidate_project_roots(home: &Path) -> Vec<PathBuf> {
         roots.insert(current);
     }
 
+    // 1) ~/.claude.json — projects that have been opened in Claude Code
     let claude_json = home.join(".claude.json");
     if let Some(text) = read_text_file(&claude_json) {
         if let Ok(json) = serde_json::from_str::<JsonValue>(&text) {
@@ -1173,6 +1174,40 @@ fn collect_candidate_project_roots(home: &Path) -> Vec<PathBuf> {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    // 2) Common workspace directories — 1 level deep, only add dirs with agent configs
+    let workspace_hints = [
+        "Documents/GitHub",
+        "Documents/github",
+        "Developer",
+        "Projects",
+        "projects",
+        "workspace",
+        "code",
+        "dev",
+        "src",
+    ];
+    for hint in &workspace_hints {
+        let dir = home.join(hint);
+        if !dir.exists() {
+            continue;
+        }
+        if let Ok(entries) = fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_dir() {
+                    continue;
+                }
+                let has_agent_config = path.join(".codex").is_dir()
+                    || path.join(".gemini").is_dir()
+                    || path.join(".claude").is_dir()
+                    || path.join(".mcp.json").is_file();
+                if has_agent_config {
+                    roots.insert(path);
                 }
             }
         }

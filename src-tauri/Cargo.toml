@@ -1,6 +1,6 @@
 [package]
 name = "agent-skill-inventory"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Local inventory for Codex, Claude, Gemini CLI, and Antigravity skill/MCP settings"
 
