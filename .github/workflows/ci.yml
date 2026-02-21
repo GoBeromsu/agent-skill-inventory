@@ -1,0 +1,61 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify environment prerequisites
+        run: pnpm run verify:env
+
+      - name: Verify runtime dependencies
+        run: pnpm run verify:deps
+
+      - name: Verify TypeScript layer
+        run: pnpm run verify:typescript
+
+      - name: Verify Rust layer
+        run: pnpm run verify:rust
+
+      - name: Install Rust cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/Cargo
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build frontend
+        run: pnpm run build
+
+      - name: Build Tauri app
+        run: pnpm run tauri build

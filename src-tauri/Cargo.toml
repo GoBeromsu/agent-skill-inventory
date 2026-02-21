@@ -1,0 +1,22 @@
+[package]
+name = "agent-skill-inventory"
+version = "0.1.0"
+edition = "2021"
+description = "Local inventory for Codex, Claude, Gemini CLI, and Antigravity skill/MCP settings"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+walkdir = "2"
+dirs = "5"
+sha2 = "0.10"
+hex = "0.4"
+tauri = { version = "1.5", features = ["shell-open"] }
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

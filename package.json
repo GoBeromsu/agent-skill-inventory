@@ -1,0 +1,38 @@
+{
+  "name": "agent-skill-inventory",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cross-agent Skill and MCP inventory desktop app for macOS.",
+  "packageManager": "pnpm@10.30.1",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5175",
+    "build": "tsc -b && vite build",
+    "tauri": "tauri",
+    "verify:env": "node scripts/verify-env.mjs",
+    "verify:deps": "node scripts/verify-deps.mjs",
+    "verify:typescript": "node scripts/verify-typescript.mjs",
+    "verify:rust": "node scripts/verify-rust.mjs",
+    "verify:all": "node scripts/verify-env.mjs && node scripts/verify-deps.mjs && node scripts/verify-typescript.mjs && node scripts/verify-rust.mjs",
+    "ci:inspect-pr": "bash scripts/ci-inspect-pr.sh",
+    "typecheck": "tsc -b --pretty false",
+    "typecheck:full": "pnpm run typecheck && (cd src-tauri && cargo check)",
+    "deps:check": "pnpm outdated",
+    "deps:update": "pnpm up --latest",
+    "deploy:mac": "pnpm run build && pnpm run tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^1.6.0",
+    "lucide-react": "^0.575.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^1.5.14",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.1",
+    "react-refresh": "^0.14.2",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.2"
+  }
+}
