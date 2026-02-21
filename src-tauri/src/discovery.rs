@@ -60,6 +60,7 @@ impl FromStr for AgentType {
 pub enum ItemKind {
     Mcp,
     Skill,
+    Soul,
 }
 
 impl ItemKind {
@@ -67,6 +68,7 @@ impl ItemKind {
         match self {
             ItemKind::Mcp => "mcp",
             ItemKind::Skill => "skill",
+            ItemKind::Soul => "soul",
         }
     }
 }
@@ -467,6 +469,62 @@ fn add_skill_records(
     }
 }
 
+fn add_soul_file(
+    agent: AgentType,
+    path: &Path,
+    scope: ScopeKind,
+    scope_hint: &str,
+    out: &mut Vec<DiscoveryRecord>,
+) {
+    if !path.exists() {
+        return;
+    }
+
+    let content = read_text_file(path).unwrap_or_default();
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("soul")
+        .to_string();
+
+    let location = path.to_string_lossy().to_string();
+    let details = DiscoveryDetails {
+        command: None,
+        args: None,
+        url: None,
+        env: None,
+        file: Some(location.clone()),
+        transport: None,
+        description: None,
+    };
+
+    let fingerprint = hash_text(&format!("{}|{}", name, location));
+    let canonical_group_id = hash_text(&format!("{}|{}", normalize_name(&name), normalize_path(&location)));
+
+    let signature = file_signature(path);
+    out.push(DiscoveryRecord {
+        id: build_record_id(&agent, &ItemKind::Soul, &name, &location),
+        agent,
+        kind: ItemKind::Soul,
+        name,
+        location,
+        scope,
+        scope_hint: scope_hint.to_string(),
+        status: StatusKind::Unknown,
+        source: DiscoverySource {
+            kind: "soul".to_string(),
+            file_path: path.to_string_lossy().to_string(),
+            extractor_version: EXTRACTOR_VERSION.to_string(),
+            last_modified: signature.as_ref().map_or(0, |sig| sig.last_modified),
+            file_hash: signature.and_then(|sig| sig.file_hash),
+        },
+        details,
+        raw: content,
+        fingerprint,
+        canonical_group_id,
+    });
+}
+
 fn parse_toml_mcp_config(
     agent: AgentType,
     path: &Path,
@@ -678,6 +736,20 @@ fn scan_codex(home: &Path, roots: &[PathBuf], out: &mut Vec<DiscoveryRecord>) {
         out,
     );
 
+    // Soul files — personal
+    add_soul_file(AgentType::Codex, &home.join(".codex/AGENTS.md"), ScopeKind::Personal, "~/.codex", out);
+    let rules_dir = home.join(".codex/rules");
+    if rules_dir.exists() {
+        for entry in WalkDir::new(&rules_dir).into_iter().flatten() {
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            if entry.path().extension().and_then(|s| s.to_str()) == Some("rules") {
+                add_soul_file(AgentType::Codex, entry.path(), ScopeKind::Personal, "~/.codex/rules", out);
+            }
+        }
+    }
+
     for root in roots {
         let project_hint = root.to_string_lossy().to_string();
         let cfg = root.join(".codex/config.toml");
@@ -691,6 +763,9 @@ fn scan_codex(home: &Path, roots: &[PathBuf], out: &mut Vec<DiscoveryRecord>) {
             &project_hint,
             out,
         );
+        // Soul files — project
+        add_soul_file(AgentType::Codex, &root.join("CODEX.md"), ScopeKind::Project, &project_hint, out);
+        add_soul_file(AgentType::Codex, &root.join("AGENTS.md"), ScopeKind::Project, &project_hint, out);
     }
 }
 
@@ -713,7 +788,10 @@ fn scan_claude(home: &Path, roots: &[PathBuf], out: &mut Vec<DiscoveryRecord>) {
                 );
             }
 
-            if let Some(projects) = json.as_object() {
+            let project_obj = json.get("projects")
+                .and_then(JsonValue::as_object)
+                .or_else(|| json.as_object());
+            if let Some(projects) = project_obj {
                 for (key, value) in projects {
                     if !key.starts_with('/') {
                         continue;
@@ -785,6 +863,9 @@ fn scan_claude(home: &Path, roots: &[PathBuf], out: &mut Vec<DiscoveryRecord>) {
     let skill_dir = home.join(".claude/skills");
     add_skill_records(AgentType::Claude, &skill_dir, ScopeKind::Personal, "~/.claude", out);
 
+    // Soul files — personal
+    add_soul_file(AgentType::Claude, &home.join(".claude/CLAUDE.md"), ScopeKind::Personal, "~/.claude", out);
+
     for root in roots {
         let hint = root.to_string_lossy().to_string();
         add_skill_records(
@@ -805,6 +886,10 @@ fn scan_claude(home: &Path, roots: &[PathBuf], out: &mut Vec<DiscoveryRecord>) {
                 parse_json_object_for_mcp(AgentType::Claude, &project_mcp, ScopeKind::Project, &hint, &json, out);
             }
         }
+
+        // Soul files — project
+        add_soul_file(AgentType::Claude, &root.join("CLAUDE.md"), ScopeKind::Project, &hint, out);
+        add_soul_file(AgentType::Claude, &root.join("AGENTS.md"), ScopeKind::Project, &hint, out);
     }
 }
 
@@ -828,6 +913,9 @@ fn scan_gemini(home: &Path, roots: &[PathBuf], out: &mut Vec<DiscoveryRecord>) {
         out,
     );
 
+    // Soul files — personal
+    add_soul_file(AgentType::Gemini, &home.join(".gemini/GEMINI.md"), ScopeKind::Personal, "~/.gemini", out);
+
     let antigravity_global = home.join(".gemini/antigravity/mcp_config.json");
     if antigravity_global.exists() {
         parse_antigravity_json_file(
@@ -849,6 +937,9 @@ fn scan_gemini(home: &Path, roots: &[PathBuf], out: &mut Vec<DiscoveryRecord>) {
             }
         }
         add_skill_records(AgentType::Gemini, &root.join(".gemini/skills"), ScopeKind::Project, &project_hint, out);
+        // Soul files — project
+        add_soul_file(AgentType::Gemini, &root.join("GEMINI.md"), ScopeKind::Project, &project_hint, out);
+        add_soul_file(AgentType::Gemini, &root.join("AGENTS.md"), ScopeKind::Project, &project_hint, out);
     }
 }
 
@@ -963,6 +1054,20 @@ fn collect_antigravity_code_tracker_files(code_tracker: &Path, paths: &mut HashS
     }
 }
 
+fn collect_rules_files(rules_dir: &Path, paths: &mut HashSet<PathBuf>) {
+    if !rules_dir.exists() {
+        return;
+    }
+    for entry in WalkDir::new(rules_dir).into_iter().flatten() {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        if entry.path().extension().and_then(|s| s.to_str()) == Some("rules") {
+            paths.insert(entry.path().to_path_buf());
+        }
+    }
+}
+
 fn collect_json_files(dir: &Path, paths: &mut HashSet<PathBuf>) {
     if !dir.exists() {
         return;
@@ -991,6 +1096,9 @@ fn collect_candidate_files(home: &Path, roots: &[PathBuf]) -> Vec<PathBuf> {
     add(&mut paths, &base_codex);
     collect_skill_files(&home.join(".codex/skills"), &mut paths);
     collect_skill_files(&home.join(".codex/vendor_imports/skills"), &mut paths);
+    // Codex soul files — personal
+    add(&mut paths, &home.join(".codex/AGENTS.md"));
+    collect_rules_files(&home.join(".codex/rules"), &mut paths);
 
     let claude_json = home.join(".claude.json");
     add(&mut paths, &claude_json);
@@ -999,6 +1107,8 @@ fn collect_candidate_files(home: &Path, roots: &[PathBuf]) -> Vec<PathBuf> {
     collect_skill_files(&home.join(".claude/skills"), &mut paths);
     collect_json_files(&home.join(".claude/projects"), &mut paths);
     add(&mut paths, &Path::new("/Library/Application Support/ClaudeCode/managed-mcp.json"));
+    // Claude soul files — personal
+    add(&mut paths, &home.join(".claude/CLAUDE.md"));
 
     let antigravity_dir = home.join(".gemini/antigravity");
     add(&mut paths, &antigravity_dir.join("mcp_config.json"));
@@ -1007,6 +1117,8 @@ fn collect_candidate_files(home: &Path, roots: &[PathBuf]) -> Vec<PathBuf> {
 
     add(&mut paths, &home.join(".gemini/settings.json"));
     collect_skill_files(&home.join(".gemini/skills"), &mut paths);
+    // Gemini soul files — personal
+    add(&mut paths, &home.join(".gemini/GEMINI.md"));
 
     for root in roots {
         add(&mut paths, &root.join(".codex/config.toml"));
@@ -1015,10 +1127,15 @@ fn collect_candidate_files(home: &Path, roots: &[PathBuf]) -> Vec<PathBuf> {
         add(&mut paths, &root.join(".mcp.json"));
 
         collect_skill_files(&root.join(".claude/skills"), &mut paths);
-        collect_skill_files(&root.join(".claude/skills"), &mut paths);
         add(&mut paths, &root.join(".gemini/settings.json"));
         collect_skill_files(&root.join(".gemini/skills"), &mut paths);
         collect_skill_files(&root.join(".antigravity/skills"), &mut paths);
+
+        // Soul files — project
+        add(&mut paths, &root.join("CLAUDE.md"));
+        add(&mut paths, &root.join("CODEX.md"));
+        add(&mut paths, &root.join("GEMINI.md"));
+        add(&mut paths, &root.join("AGENTS.md"));
     }
 
     paths.into_iter().collect()
@@ -1034,7 +1151,10 @@ fn collect_candidate_project_roots(home: &Path) -> Vec<PathBuf> {
     let claude_json = home.join(".claude.json");
     if let Some(text) = read_text_file(&claude_json) {
         if let Ok(json) = serde_json::from_str::<JsonValue>(&text) {
-            if let Some(obj) = json.as_object() {
+            let project_map = json.get("projects")
+                .and_then(JsonValue::as_object)
+                .or_else(|| json.as_object());
+            if let Some(obj) = project_map {
                 for (path_text, value) in obj {
                     if !path_text.starts_with('/') {
                         continue;

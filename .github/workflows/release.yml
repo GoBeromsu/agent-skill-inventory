@@ -1,0 +1,171 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  # ── 1. Draft release 생성 ───────────────────────────────────────────────
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create.outputs.release_id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create draft release
+        id: create
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: `Agent Skill & MCP Inventory ${tag}`,
+              body: `## What's Changed\n\nSee commits for details.\n\n**Full Changelog**: https://github.com/${context.repo.owner}/${context.repo.repo}/commits/${tag}`,
+              draft: true,
+              prerelease: false,
+            });
+            core.setOutput('release_id', String(data.id));
+
+  # ── 2. 플랫폼별 병렬 빌드 ─────────────────────────────────────────────
+  build:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            arch: aarch64
+          - target: x86_64-apple-darwin
+            arch: x86_64
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: actions/cache@v4
+        with:
+          path: src-tauri/target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.target }}-cargo-
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build & upload to release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        with:
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          args: --target ${{ matrix.target }}
+
+      # publish 잡에서 latest.json 조립에 필요한 .app.tar.gz + .sig 수집
+      - name: Collect updater artifacts
+        run: |
+          mkdir -p updater-out
+          find "src-tauri/target/${{ matrix.target }}/release/bundle/macos" \
+            \( -name '*.app.tar.gz' -o -name '*.app.tar.gz.sig' \) \
+            -exec cp {} updater-out/ \;
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: updater-${{ matrix.arch }}
+          path: updater-out/
+
+  # ── 3. latest.json 조립 + 릴리즈 퍼블리시 ─────────────────────────────
+  publish:
+    needs: [create-release, build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Build latest.json and publish release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const tag = context.ref.replace('refs/tags/', '');
+            const version = tag.replace(/^v/, '');
+            const repoUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}`;
+
+            function findFile(dir, predicate) {
+              const files = fs.readdirSync(dir).filter(predicate);
+              if (!files.length) throw new Error(`No matching file in ${dir}: ${fs.readdirSync(dir)}`);
+              return files[0];
+            }
+
+            const armDir  = 'artifacts/updater-aarch64';
+            const x64Dir  = 'artifacts/updater-x86_64';
+
+            const armTar  = findFile(armDir, f => f.endsWith('.tar.gz') && !f.endsWith('.sig'));
+            const armSig  = fs.readFileSync(path.join(armDir, armTar + '.sig'), 'utf8').trim();
+            const x64Tar  = findFile(x64Dir, f => f.endsWith('.tar.gz') && !f.endsWith('.sig'));
+            const x64Sig  = fs.readFileSync(path.join(x64Dir, x64Tar + '.sig'), 'utf8').trim();
+
+            const latest = {
+              version,
+              notes: `See release notes at ${repoUrl}/releases/tag/${tag}`,
+              pub_date: new Date().toISOString(),
+              platforms: {
+                'darwin-aarch64': {
+                  signature: armSig,
+                  url: `${repoUrl}/releases/download/${tag}/${encodeURIComponent(armTar)}`,
+                },
+                'darwin-x86_64': {
+                  signature: x64Sig,
+                  url: `${repoUrl}/releases/download/${tag}/${encodeURIComponent(x64Tar)}`,
+                },
+              },
+            };
+
+            fs.writeFileSync('latest.json', JSON.stringify(latest, null, 2));
+            core.info('latest.json:\n' + fs.readFileSync('latest.json', 'utf8'));
+
+            const releaseId = ${{ needs.create-release.outputs.release_id }};
+
+            // latest.json 업로드
+            await github.rest.repos.uploadReleaseAsset({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: releaseId,
+              name: 'latest.json',
+              data: fs.readFileSync('latest.json'),
+              headers: { 'content-type': 'application/json' },
+            });
+
+            // draft → published
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: releaseId,
+              draft: false,
+            });
+
+            core.info(`✅ Release ${tag} published!`);

@@ -10,14 +10,15 @@ export type CategoryKind = 'MCP' | 'Skill' | 'Subagent' | 'Soul'
 
 function classifyRecord(record: DiscoveryRecord): CategoryKind {
   if (record.kind === 'mcp') return 'MCP'
-  
+  if (record.kind === 'soul') return 'Soul'
+
   const name = record.name.toLowerCase()
   const loc = record.location.toLowerCase()
 
   if (name.endsWith('.md') && (name.includes('claude') || name.includes('agent') || name.includes('system') || name.includes('personal') || name.includes('project'))) {
     return 'Soul'
   }
-  
+
   if (name.includes('subagent') || loc.includes('subagents') || loc.includes('subagent')) {
     return 'Subagent'
   }

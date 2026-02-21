@@ -1,5 +1,5 @@
 export type AgentType = 'codex' | 'claude' | 'gemini' | 'antigravity'
-export type ItemKind = 'mcp' | 'skill'
+export type ItemKind = 'mcp' | 'skill' | 'soul'
 export type ScopeKind = 'global' | 'personal' | 'project' | 'managed' | 'system' | 'session' | 'antigravity-config' | 'unknown'
 export type StatusKind = 'enabled' | 'disabled' | 'unknown'
 export type GroupByKey = 'agent' | 'scope' | 'location'

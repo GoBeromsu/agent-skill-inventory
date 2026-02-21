@@ -88,6 +88,25 @@ All frontend–backend communication goes through Tauri's `invoke()` bridge.
 
 Project roots are discovered from `~/.claude.json` top-level keys (absolute paths) plus `$CWD`.
 
+## Agent CLI Documentation
+
+Reference links for each supported agent's official docs — use these when updating scan rules or adding new config paths.
+
+| Agent | Docs URL |
+|---|---|
+| **Claude Code** | https://docs.anthropic.com/en/docs/claude-code |
+| **OpenAI Codex** | https://platform.openai.com/docs/codex |
+| **Gemini CLI** | https://github.com/google-gemini/gemini-cli |
+| **Antigravity** | Internal — part of Gemini CLI; config lives under `~/.gemini/antigravity/` |
+
+### Key config paths per agent (for scanner updates)
+
+- **Claude**: `~/.claude.json` · `~/.claude/settings.json` · `~/.claude/CLAUDE.md` · per-project `CLAUDE.md` / `.mcp.json` / `.claude/`
+- **Codex**: `~/.codex/config.toml` · per-project `CODEX.md` / `.codex/`
+- **Gemini**: `~/.gemini/settings.json` · `~/.gemini/GEMINI.md` · per-project `GEMINI.md` / `.gemini/`
+- **Antigravity**: `~/.gemini/antigravity/mcp_config.json` · `~/.gemini/antigravity/code_tracker/` · `~/.gemini/antigravity/skills/`
+- **Agent-agnostic soul file**: `AGENTS.md` (OpenAI convention, recognized by all agents)
+
 ## Key Constraints
 
 - **Tauri v1**, not v2. APIs are `@tauri-apps/api` v1.x. Do not use v2 APIs.
