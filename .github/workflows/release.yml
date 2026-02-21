@@ -124,10 +124,12 @@ jobs:
             const armDir  = 'artifacts/updater-aarch64';
             const x64Dir  = 'artifacts/updater-x86_64';
 
-            const armTar  = findFile(armDir, f => f.endsWith('.tar.gz') && !f.endsWith('.sig'));
-            const armSig  = fs.readFileSync(path.join(armDir, armTar + '.sig'), 'utf8').trim();
-            const x64Tar  = findFile(x64Dir, f => f.endsWith('.tar.gz') && !f.endsWith('.sig'));
-            const x64Sig  = fs.readFileSync(path.join(x64Dir, x64Tar + '.sig'), 'utf8').trim();
+            const armTar     = findFile(armDir, f => f.endsWith('.tar.gz') && !f.endsWith('.tar.gz.sig'));
+            const armSigFile = findFile(armDir, f => f.endsWith('.tar.gz.sig'));
+            const armSig     = fs.readFileSync(path.join(armDir, armSigFile), 'utf8').trim();
+            const x64Tar     = findFile(x64Dir, f => f.endsWith('.tar.gz') && !f.endsWith('.tar.gz.sig'));
+            const x64SigFile = findFile(x64Dir, f => f.endsWith('.tar.gz.sig'));
+            const x64Sig     = fs.readFileSync(path.join(x64Dir, x64SigFile), 'utf8').trim();
 
             const latest = {
               version,
